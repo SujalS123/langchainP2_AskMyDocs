@@ -20,7 +20,7 @@ class AskMyDocsPipeline:
             model_name="all-MiniLM-L6-v2"
         )
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
+            model="models/gemini-2.5-flash",
             temperature=0.2,
             google_api_key=GOOGLE_API_KEY
         )
@@ -51,16 +51,39 @@ class AskMyDocsPipeline:
 
     def query_pdf(self, pdf_index_path: str, query: str):
         """
-        Step 2: Load FAISS → Query → Get Gemini response
+        Step 2: Load FAISS → Query → Get Gemini response with citations
         """
         print(f"[INFO] Querying FAISS index: {pdf_index_path}")
         vectorstore = FAISS.load_local(pdf_index_path, self.embeddings, allow_dangerous_deserialization=True)
-
-        qa = RetrievalQA.from_chain_type(
-            llm=self.llm,
-            retriever=vectorstore.as_retriever(),
-            chain_type="stuff"
-        )
-
-        response = qa.invoke({"query": query})
-        return response["result"]
+        
+        # Get relevant documents with similarity search
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+        docs = retriever.get_relevant_documents(query)
+        
+        # Create context with page numbers
+        context = ""
+        sources = []
+        for i, doc in enumerate(docs):
+            page_num = doc.metadata.get('page', 'Unknown')
+            context += f"[Source {i+1} - Page {page_num}]: {doc.page_content}\n\n"
+            sources.append({"page": page_num, "content": doc.page_content[:200] + "..."})
+        
+        # Create prompt with citations
+        prompt = f"""
+        Based on the following context, answer the question and include citations in your response.
+        Use [Source X] format to cite your sources.
+        
+        Context:
+        {context}
+        
+        Question: {query}
+        
+        Answer with citations:
+        """
+        
+        response = self.llm.invoke(prompt)
+        
+        return {
+            "answer": response.content,
+            "sources": sources
+        }

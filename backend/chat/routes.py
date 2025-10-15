@@ -1,5 +1,6 @@
 import os
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi.responses import FileResponse
 from auth.utils import get_current_user
 from database.connection import files_collection, chats_collection
 from .langchain_pipeline import AskMyDocsPipeline
@@ -59,19 +60,20 @@ async def query_pdf(
         raise HTTPException(status_code=404, detail="File not found")
     
     # Query using LangChain
-    response = pipeline.query_pdf(file_doc["index_path"], question)
+    result = pipeline.query_pdf(file_doc["index_path"], question)
     
     # Save chat history
     chat_doc = {
         "user_email": current_user["email"],
         "filename": filename,
         "question": question,
-        "answer": response,
+        "answer": result["answer"],
+        "sources": result["sources"],
         "timestamp": datetime.utcnow()
     }
     await chats_collection.insert_one(chat_doc)
     
-    return {"response": response}
+    return {"response": result["answer"], "sources": result["sources"]}
 
 @router.get("/history/{filename}")
 async def get_chat_history(
@@ -83,4 +85,11 @@ async def get_chat_history(
         "filename": filename
     }).sort("timestamp", 1).to_list(100)
     
-    return [{"question": c["question"], "answer": c["answer"], "timestamp": c["timestamp"]} for c in chats]
+    return [{"question": c["question"], "answer": c["answer"], "sources": c.get("sources", []), "timestamp": c["timestamp"]} for c in chats]
+
+@router.get("/uploads/{filename}")
+async def serve_pdf(filename: str):
+    file_path = f"uploads/{filename}"
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type="application/pdf")
+    raise HTTPException(status_code=404, detail="File not found")
