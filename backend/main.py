@@ -7,6 +7,11 @@ from chat.routes import router as chat_router
 
 app = FastAPI(title="AskMyDocs API", version="1.0.0")
 
+# Health check endpoint for Render
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -31,7 +36,9 @@ async def serve_pdf(filename: str):
         return FileResponse(file_path, media_type="application/pdf")
     raise HTTPException(status_code=404, detail="File not found")
 
+# This ensures the app runs on the correct port in production
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    print(f"Starting server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

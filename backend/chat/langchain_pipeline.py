@@ -3,7 +3,13 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_huggingface import HuggingFaceEmbeddings
+# Lightweight embedding alternative
+try:
+    from sentence_transformers import SentenceTransformer
+    USE_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    from langchain_huggingface import HuggingFaceEmbeddings
+    USE_SENTENCE_TRANSFORMERS = False
 from langchain.chains import RetrievalQA
 from dotenv import load_dotenv
 
@@ -16,9 +22,13 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 class AskMyDocsPipeline:
     def __init__(self):
         """Initialize embeddings and model once to reuse."""
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2"
-        )
+        # Use lighter embedding model for deployment
+        if USE_SENTENCE_TRANSFORMERS:
+            self.embeddings = SentenceTransformer('all-MiniLM-L6-v2')
+        else:
+            self.embeddings = HuggingFaceEmbeddings(
+                model_name="all-MiniLM-L6-v2"
+            )
         self.llm = ChatGoogleGenerativeAI(
             model="models/gemini-2.5-flash",
             temperature=0.2,
