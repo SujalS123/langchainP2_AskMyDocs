@@ -5,7 +5,7 @@ services:
     pythonVersion: "3.11.0"
     rootDir: backend
     buildCommand: pip install --no-cache-dir -r requirements-minimal.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: python test_server.py
     envVars:
       - key: GOOGLE_API_KEY
         sync: false
