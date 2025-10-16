@@ -1,34 +1,26 @@
 import os
-from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
+import PyPDF2
 from langchain_google_genai import ChatGoogleGenerativeAI
-# Lightweight embedding alternative
-try:
-    from sentence_transformers import SentenceTransformer
-    USE_SENTENCE_TRANSFORMERS = True
-except ImportError:
-    from langchain_huggingface import HuggingFaceEmbeddings
-    USE_SENTENCE_TRANSFORMERS = False
-from langchain.chains import RetrievalQA
 from dotenv import load_dotenv
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+import pickle
 
 load_dotenv()
 
-# Load your Google Gemini API key
+# Load API keys
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 
 class AskMyDocsPipeline:
     def __init__(self):
         """Initialize embeddings and model once to reuse."""
-        # Use lighter embedding model for deployment
-        if USE_SENTENCE_TRANSFORMERS:
-            self.embeddings = SentenceTransformer('all-MiniLM-L6-v2')
-        else:
-            self.embeddings = HuggingFaceEmbeddings(
-                model_name="all-MiniLM-L6-v2"
-            )
+        # Use TF-IDF embeddings - completely free, no API needed
+        self.vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
+        self.vectors = None
+        self.chunks = None
         self.llm = ChatGoogleGenerativeAI(
             model="models/gemini-2.5-flash",
             temperature=0.2,
@@ -37,11 +29,19 @@ class AskMyDocsPipeline:
 
     def process_pdf(self, pdf_path: str):
         """
-        Step 1: Load PDF → Split → Embed → Store in FAISS
+        Step 1: Load PDF → Split → Embed → Store in TF-IDF
         """
         print(f"[INFO] Loading PDF: {pdf_path}")
-        loader = PyPDFLoader(pdf_path)
-        documents = loader.load()
+        # Use PyPDF2 directly to avoid langchain-community issues
+        documents = []
+        with open(pdf_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            for i, page in enumerate(pdf_reader.pages):
+                text = page.extract_text()
+                documents.append(type('Document', (), {
+                    'page_content': text,
+                    'metadata': {'source': pdf_path, 'page': i}
+                })())
 
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
@@ -50,25 +50,41 @@ class AskMyDocsPipeline:
         chunks = splitter.split_documents(documents)
         print(f"[INFO] Split into {len(chunks)} chunks")
 
-        # Create FAISS vector store
-        vectorstore = FAISS.from_documents(chunks, self.embeddings)
-
+        # Create TF-IDF vectors
+        chunk_texts = [chunk.page_content for chunk in chunks]
+        self.vectors = self.vectorizer.fit_transform(chunk_texts)
+        self.chunks = chunks
+        
         # Save locally for reuse
-        index_path = f"{pdf_path}_faiss"
-        vectorstore.save_local(index_path)
-        print(f"[INFO] Saved FAISS index at: {index_path}")
+        index_path = f"{pdf_path}_tfidf.pkl"
+        with open(index_path, 'wb') as f:
+            pickle.dump({
+                'vectorizer': self.vectorizer,
+                'vectors': self.vectors,
+                'chunks': chunks
+            }, f)
+        print(f"[INFO] Saved TF-IDF index at: {index_path}")
         return index_path
 
     def query_pdf(self, pdf_index_path: str, query: str):
         """
-        Step 2: Load FAISS → Query → Get Gemini response with citations
+        Step 2: Load TF-IDF → Query → Get Gemini response with citations
         """
-        print(f"[INFO] Querying FAISS index: {pdf_index_path}")
-        vectorstore = FAISS.load_local(pdf_index_path, self.embeddings, allow_dangerous_deserialization=True)
+        print(f"[INFO] Querying TF-IDF index: {pdf_index_path}")
         
-        # Get relevant documents with similarity search
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-        docs = retriever.get_relevant_documents(query)
+        # Load TF-IDF data
+        with open(pdf_index_path, 'rb') as f:
+            data = pickle.load(f)
+        
+        vectorizer = data['vectorizer']
+        vectors = data['vectors']
+        chunks = data['chunks']
+        
+        # Find similar chunks
+        query_vec = vectorizer.transform([query])
+        similarities = cosine_similarity(query_vec, vectors)[0]
+        top_indices = np.argsort(similarities)[-3:][::-1]
+        docs = [chunks[i] for i in top_indices]
         
         # Create context with page numbers
         context = ""
