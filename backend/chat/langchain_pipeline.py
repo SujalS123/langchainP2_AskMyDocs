@@ -66,9 +66,19 @@ class AskMyDocsPipeline:
 
     def query_pdf(self, pdf_index_path: str, query: str):
         """
-        Step 2: Load TF-IDF → Query → Get Gemini response with citations
+        Step 2: Load simple index → Query → Get Gemini response with citations
         """
         print(f"[INFO] Querying simple index: {pdf_index_path}")
+        
+        # Check if file exists, if not try to find the correct one
+        if not os.path.exists(pdf_index_path):
+            # Try to find simple pickle file
+            base_path = pdf_index_path.replace('_faiss', '').replace('_tfidf.pkl', '')
+            simple_path = f"{base_path}_simple.pkl"
+            if os.path.exists(simple_path):
+                pdf_index_path = simple_path
+            else:
+                raise FileNotFoundError(f"Index file not found. Please re-upload the PDF.")
         
         # Load data
         with open(pdf_index_path, 'rb') as f:

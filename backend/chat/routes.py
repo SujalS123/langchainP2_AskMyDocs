@@ -60,7 +60,12 @@ async def query_pdf(
         raise HTTPException(status_code=404, detail="File not found")
     
     # Query using LangChain
-    result = pipeline.query_pdf(file_doc["index_path"], question)
+    try:
+        result = pipeline.query_pdf(file_doc["index_path"], question)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
     
     # Save chat history
     chat_doc = {
