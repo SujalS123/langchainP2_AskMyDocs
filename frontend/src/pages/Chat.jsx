@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import API_BASE_URL from '../config/api';
 
 export default function Chat() {
   const { filename } = useParams();
@@ -29,7 +30,7 @@ export default function Chat() {
 
   const fetchChatHistory = async () => {
     try {
-      const response = await axios.get(`http://localhost:8000/chat/history/${filename}`, {
+      const response = await axios.get(`${API_BASE_URL}/chat/history/${filename}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMessages(response.data);
@@ -59,7 +60,7 @@ export default function Chat() {
     formData.append('question', currentQuestion);
 
     try {
-      const response = await axios.post('http://localhost:8000/chat/query', formData, {
+      const response = await axios.post(`${API_BASE_URL}/chat/query`, formData, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'
@@ -99,7 +100,7 @@ export default function Chat() {
   const navigateToPage = (pageNum) => {
     setCurrentPage(pageNum);
     if (pdfViewerRef.current) {
-      pdfViewerRef.current.src = `http://localhost:8000/uploads/${encodeURIComponent(filename)}#page=${pageNum}`;
+      pdfViewerRef.current.src = `${API_BASE_URL}/uploads/${encodeURIComponent(filename)}#page=${pageNum}`;
     }
   };
 
@@ -160,7 +161,7 @@ export default function Chat() {
               </div>
               <iframe
                 ref={pdfViewerRef}
-                src={`http://localhost:8000/uploads/${encodeURIComponent(filename)}#page=${currentPage}`}
+                src={`${API_BASE_URL}/uploads/${encodeURIComponent(filename)}#page=${currentPage}`}
                 className="w-full h-full rounded border"
                 title="PDF Viewer"
               />

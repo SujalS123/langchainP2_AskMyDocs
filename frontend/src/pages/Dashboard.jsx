@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import API_BASE_URL from '../config/api';
 
 export default function Dashboard() {
   const [files, setFiles] = useState([]);
@@ -18,7 +19,7 @@ export default function Dashboard() {
 
   const fetchFiles = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/chat/files', {
+      const response = await axios.get(`${API_BASE_URL}/chat/files`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setFiles(response.data);
@@ -38,7 +39,7 @@ export default function Dashboard() {
     formData.append('file', file);
 
     try {
-      await axios.post('http://localhost:8000/chat/upload', formData, {
+      await axios.post(`${API_BASE_URL}/chat/upload`, formData, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'

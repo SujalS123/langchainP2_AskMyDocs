@@ -4,11 +4,9 @@ services:
     env: python
     plan: free
     runtime: python-3.11.7
-    buildCommand: pip install -r requirements.txt
+    buildCommand: python -m pip install --upgrade pip setuptools==68.0.0 wheel ; python -m pip install -r requirements-ultra-minimal.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.7
       - key: GOOGLE_API_KEY
         sync: false
       - key: SECRET_KEY

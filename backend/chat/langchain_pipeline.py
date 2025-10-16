@@ -3,9 +3,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 import PyPDF2
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
+import re
+from collections import Counter
+import math
 import pickle
 
 load_dotenv()
@@ -17,10 +17,9 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 class AskMyDocsPipeline:
     def __init__(self):
         """Initialize embeddings and model once to reuse."""
-        # Use TF-IDF embeddings - completely free, no API needed
-        self.vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
-        self.vectors = None
+        # Use simple text matching - no ML dependencies
         self.chunks = None
+        self.chunk_texts = None
         self.llm = ChatGoogleGenerativeAI(
             model="models/gemini-2.5-flash",
             temperature=0.2,
@@ -50,41 +49,45 @@ class AskMyDocsPipeline:
         chunks = splitter.split_documents(documents)
         print(f"[INFO] Split into {len(chunks)} chunks")
 
-        # Create TF-IDF vectors
+        # Save chunks for simple text search
         chunk_texts = [chunk.page_content for chunk in chunks]
-        self.vectors = self.vectorizer.fit_transform(chunk_texts)
         self.chunks = chunks
+        self.chunk_texts = chunk_texts
         
         # Save locally for reuse
-        index_path = f"{pdf_path}_tfidf.pkl"
+        index_path = f"{pdf_path}_simple.pkl"
         with open(index_path, 'wb') as f:
             pickle.dump({
-                'vectorizer': self.vectorizer,
-                'vectors': self.vectors,
-                'chunks': chunks
+                'chunks': chunks,
+                'chunk_texts': chunk_texts
             }, f)
-        print(f"[INFO] Saved TF-IDF index at: {index_path}")
+        print(f"[INFO] Saved simple index at: {index_path}")
         return index_path
 
     def query_pdf(self, pdf_index_path: str, query: str):
         """
         Step 2: Load TF-IDF → Query → Get Gemini response with citations
         """
-        print(f"[INFO] Querying TF-IDF index: {pdf_index_path}")
+        print(f"[INFO] Querying simple index: {pdf_index_path}")
         
-        # Load TF-IDF data
+        # Load data
         with open(pdf_index_path, 'rb') as f:
             data = pickle.load(f)
         
-        vectorizer = data['vectorizer']
-        vectors = data['vectors']
         chunks = data['chunks']
+        chunk_texts = data['chunk_texts']
         
-        # Find similar chunks
-        query_vec = vectorizer.transform([query])
-        similarities = cosine_similarity(query_vec, vectors)[0]
-        top_indices = np.argsort(similarities)[-3:][::-1]
-        docs = [chunks[i] for i in top_indices]
+        # Simple keyword matching
+        query_words = set(query.lower().split())
+        scores = []
+        for i, text in enumerate(chunk_texts):
+            text_words = set(text.lower().split())
+            score = len(query_words.intersection(text_words))
+            scores.append((score, i))
+        
+        # Get top 3 matches
+        scores.sort(reverse=True)
+        docs = [chunks[i] for _, i in scores[:3]]
         
         # Create context with page numbers
         context = ""
